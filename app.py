@@ -43,6 +43,58 @@ button:disabled{background:#444;color:#888;cursor:not-allowed}
 <input type="text" id="storeName" placeholder="Lidl">
 <label>Valid From (YYYY-MM-DD):</label>
 <input type="text" id="validFrom" placeholder="2026-03-02">
+<label>Valid Until (leave empty = 14 days auto):</label>
+<input type="text" id="validUntil" placeholder="2026-03-16 (optional)">
+<button id="btn" onclick="startUpload()">Process Catalogue</button>
+<div id="log">Waiting...</div>
+<script src="/static/upload.js"></script>
+</body>
+</html>'''
+from flask import Flask, request, jsonify, render_template_string
+from twilio.twiml.messaging_response import MessagingResponse
+import requests
+import os
+import json
+import base64
+import threading
+from datetime import datetime, date, timedelta
+import re
+
+app = Flask(__name__)
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+# ===========================
+# UPLOAD TOOL HTML
+# ===========================
+UPLOAD_HTML = '''<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>katalog.ai Upload</title>
+<style>
+body{font-family:monospace;background:#111;color:#eee;padding:40px;max-width:700px;margin:0 auto}
+h1{color:#00ff88}
+.info{background:#222;padding:15px;margin:20px 0;border-left:3px solid #00ff88;font-size:13px}
+input[type=file]{display:block;margin:20px 0;color:#eee;font-size:14px}
+input[type=text]{background:#222;border:1px solid #444;color:#eee;padding:8px;width:100%;margin:5px 0 15px 0;font-family:monospace}
+label{color:#aaa;font-size:13px}
+button{background:#00ff88;color:#000;border:none;padding:15px 30px;font-weight:bold;font-size:16px;cursor:pointer;width:100%;margin-top:10px}
+button:disabled{background:#444;color:#888;cursor:not-allowed}
+#log{background:#000;padding:20px;margin-top:20px;min-height:100px;font-size:12px;line-height:1.8;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>katalog.ai - Upload Tool</h1>
+<div class="info">Select PDF, fill in the details, click Process.</div>
+<label>PDF Catalogue:</label>
+<input type="file" id="fileInput" accept=".pdf,application/pdf">
+<label>Store Name:</label>
+<input type="text" id="storeName" placeholder="Lidl">
+<label>Valid From (YYYY-MM-DD):</label>
+<input type="text" id="validFrom" placeholder="2026-03-02">
 <label>Valid Until (YYYY-MM-DD, leave empty = 14 days auto):</label>
 <input type="text" id="validUntil" placeholder="2026-03-16 (optional)">
 <button id="btn" onclick="startUpload()">Process Catalogue</button>
