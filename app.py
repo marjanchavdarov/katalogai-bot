@@ -27,7 +27,8 @@ def ask_gemini(user_message):
         }
         response = requests.post(url, json=payload, timeout=30)
         data = response.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        print(f"Gemini response: {data}")
+return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         print(f"Gemini error: {e}")
         return "Oprostite, došlo je do greške. Pokušajte ponovno! 🙏"
