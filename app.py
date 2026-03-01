@@ -38,7 +38,7 @@ button:disabled{background:#444;color:#888;cursor:not-allowed}
 <h1>katalog.ai - Upload Tool</h1>
 <div class="info">Select PDF, fill in the details, click Process.</div>
 <label>PDF Catalogue:</label>
-<input type="file" id="fileInput" accept=".pdf,application/pdf">
+<input type="file" id="fileInput" accept=".pdf">
 <label>Store Name:</label>
 <input type="text" id="storeName" placeholder="Lidl">
 <label>Valid From (YYYY-MM-DD):</label>
@@ -90,7 +90,7 @@ button:disabled{background:#444;color:#888;cursor:not-allowed}
 <h1>katalog.ai - Upload Tool</h1>
 <div class="info">Select PDF, fill in the details, click Process.</div>
 <label>PDF Catalogue:</label>
-<input type="file" id="fileInput" accept=".pdf,application/pdf">
+<input type="file" id="fileInput" accept=".pdf">
 <label>Store Name:</label>
 <input type="text" id="storeName" placeholder="Lidl">
 <label>Valid From (YYYY-MM-DD):</label>
@@ -218,7 +218,7 @@ No need to rename files here — just fill in the form!
 </div>
 
 <label>PDF Catalogue:</label>
-<input type="file" id="fileInput" accept=".pdf,application/pdf">
+<input type="file" id="fileInput" accept=".pdf">
 
 <label>Store Name:</label>
 <input type="text" id="storeName" placeholder="e.g. Lidl, Konzum, DM">
