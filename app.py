@@ -9,83 +9,60 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def search_database(query):
-    """Search Supabase for relevant products"""
+def get_all_products():
+    """Get all products from Supabase"""
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json"
     }
-    
-    # Search by product name (case insensitive)
     response = requests.get(
-        f"{SUPABASE_URL}/rest/v1/products?product=ilike.*{query}*&limit=10",
+        f"{SUPABASE_URL}/rest/v1/products?limit=500&order=store",
         headers=headers
     )
-    
     if response.status_code == 200:
         return response.json()
     return []
 
-def get_all_deals(store=None):
-    """Get all current deals, optionally filtered by store"""
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    url = f"{SUPABASE_URL}/rest/v1/products?limit=20"
-    if store:
-        url += f"&store=ilike.*{store}*"
-    
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
-        return response.json()
-    return []
-
-def format_products(products):
-    """Format products list for display"""
+def format_products_for_ai(products):
+    """Format products into a simple text list for AI"""
     if not products:
-        return "Nema pronađenih proizvoda."
+        return "Baza podataka je prazna."
     
     result = ""
     for p in products:
-        result += f"🏪 {p.get('store', '')}\n"
-        result += f"📦 {p.get('product', '')}\n"
+        result += f"{p.get('store')} | {p.get('product')} | {p.get('sale_price')}"
         if p.get('original_price') and p.get('original_price') != 'null':
-            result += f"💰 {p.get('original_price')} → {p.get('sale_price')}\n"
-        else:
-            result += f"💰 {p.get('sale_price')}\n"
+            result += f" (bilo {p.get('original_price')})"
         if p.get('valid_until') and p.get('valid_until') != 'null':
-            result += f"📅 Vrijedi do: {p.get('valid_until')}\n"
+            result += f" | do {p.get('valid_until')}"
         result += "\n"
-    
-    return result.strip()
+    return result
 
-def ask_gemini(user_message, db_context=""):
-    """Send message to Gemini with database context"""
+def ask_gemini(user_message, products_context=""):
+    """Send message to Gemini with full product context"""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    system = """Ti si katalog.ai asistent - pametni shopping asistent za Hrvatsku.
-Pomažeš korisnicima pronaći najbolje cijene i popuste u hrvatskim trgovinama.
-Za sva pitanja (vrijeme, recepti, savjeti, opće znanje) - odgovori normalno i korisno.
-Budi prijateljski, kratak i koristan. Odgovori na jeziku na kojem te korisnik pita."""
+    if products_context:
+        full_prompt = f"""Ti si katalog.ai - shopping asistent za Hrvatsku.
+Imaš pristup trenutnim katalozima hrvatskih trgovina.
 
-    if db_context:
-        full_prompt = f"{system}\n\nTrenutni podaci iz kataloga:\n{db_context}\n\nKorisnik pita: {user_message}\n\nOdgovori koristeći podatke iz kataloga gdje je relevantno."
+TRENUTNI KATALOZI (Trgovina | Proizvod | Cijena | Vrijedi do):
+{products_context}
+
+Korisnik pita: {user_message}
+
+Odgovori korisno koristeći podatke iz kataloga. Budi kratak i prijateljski.
+Ako pitanje nije o kupovini - odgovori normalno.
+Odgovori na jeziku na kojem te korisnik pita."""
     else:
-        full_prompt = f"{system}\n\nKorisnik pita: {user_message}"
+        full_prompt = f"""Ti si katalog.ai - shopping asistent za Hrvatsku.
+Pomažeš pronaći najbolje cijene u hrvatskim trgovinama.
+Korisnik pita: {user_message}
+Odgovori korisno i prijateljski na jeziku na kojem te korisnik pita."""
 
     payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": full_prompt}
-                ]
-            }
-        ]
+        "contents": [{"parts": [{"text": full_prompt}]}]
     }
     
     response = requests.post(url, json=payload, timeout=30)
@@ -106,36 +83,15 @@ def webhook():
     sender = request.form.get("From", "")
     print(f"Message from {sender}: {incoming_message}")
     
-    # Search database for relevant products
-    db_context = ""
+    # Always load products and let Gemini figure out what's relevant
+    products = get_all_products()
+    products_context = format_products_for_ai(products)
     
-    # Keywords that suggest price/catalogue search
-    search_keywords = ["cijena", "popust", "akcija", "jeftino", "gdje", "koliko", 
-                      "price", "cheap", "deal", "sale", "katalog", "tjedan",
-                      "konzum", "lidl", "kaufland", "dm", "bauhaus", "spar"]
+    # Get smart AI response
+    ai_response = ask_gemini(incoming_message, products_context)
     
-    message_lower = incoming_message.lower()
-    should_search = any(keyword in message_lower for keyword in search_keywords)
-    
-    if should_search:
-        # Try to search by product name
-        search_term = incoming_message.replace("?", "").strip()
-        products = search_database(search_term)
-        
-        if not products:
-            # If no specific results, get general deals
-            products = get_all_deals()
-        
-        if products:
-            db_context = format_products(products)
-    
-    # Get AI response
-    ai_response = ask_gemini(incoming_message, db_context)
-    
-    # Send response back via Twilio
     resp = MessagingResponse()
     resp.message(ai_response)
-    
     return str(resp)
 
 @app.route("/", methods=["GET"])
