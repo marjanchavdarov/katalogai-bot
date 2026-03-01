@@ -464,7 +464,7 @@ dropzone.addEventListener('drop', (e) => {
 
 def extract_products(image_base64, store_name, page_num, attempt=1):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    prompt = "Stranica " + str(page_num) + " kataloga od trgovine " + store_name + ". Pokusaj " + str(attempt) + ". Izvuci SVE proizvode s cijenama. Ne preskoci nijedan! Vrati SAMO JSON array: [{\"product\":\"naziv\",\"brand\":\"brend ili null\",\"quantity\":\"250g ili null\",\"original_price\":\"2.99 ili null\",\"sale_price\":\"1.99\",\"discount_percent\":\"33% ili null\",\"valid_until\":\"08.03.2026. ili null\",\"category\":\"kategorija\",\"subcategory\":\"potkategorija\"}] Kategorije: Meso i riba, Mlijecni proizvodi, Kruh i pekarski, Voce i povrce, Pice, Grickalice i slatkisi, Konzervirana hrana, Kozmetika i higijena, Kucanstvo i ciscenje, Alati i gradnja, Dom i vrt, Elektronika, Odjeca i obuca, Kucni ljubimci, Zdravlje i ljekarna, Ostalo. Ako nema proizvoda vrati: []"
+    prompt = "Stranica " + str(page_num) + " kataloga od trgovine " + store_name + ". Pokusaj " + str(attempt) + ". Izvuci SVE proizvode s cijenama. Takodjer ako vidis sitni tisak, disclaimer ili napomene na dnu stranice izvuci ih kao catalogue_fine_print. Vrati SAMO JSON objekt: {\"products\": [{\"product\":\"naziv\",\"brand\":\"brend ili null\",\"quantity\":\"250g ili null\",\"original_price\":\"2.99 ili null\",\"sale_price\":\"1.99\",\"discount_percent\":\"33% ili null\",\"valid_until\":\"08.03.2026. ili null\",\"category\":\"kategorija\",\"subcategory\":\"potkategorija\"}], \"catalogue_fine_print\": \"sitni tisak s ove stranice ili null\"} Kategorije: Meso i riba, Mlijecni proizvodi, Kruh i pekarski, Voce i povrce, Pice, Grickalice i slatkisi, Konzervirana hrana, Kozmetika i higijena, Kucanstvo i ciscenje, Alati i gradnja, Dom i vrt, Elektronika, Odjeca i obuca, Kucni ljubimci, Zdravlje i ljekarna, Ostalo. Ako nema proizvoda vrati: {\"products\": [], \"catalogue_fine_print\": null}"
     payload = {
         "contents": [{"parts": [{"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}, {"text": prompt}]}],
         "generationConfig": {"temperature": 0.1}
@@ -479,15 +479,19 @@ def extract_products(image_base64, store_name, page_num, attempt=1):
     except:
         return []
 
-def merge_results(first, second):
+def merge_results(first_tuple, second_tuple):
+    first_products, fine_print1 = first_tuple if isinstance(first_tuple, tuple) else (first_tuple, None)
+    second_products, fine_print2 = second_tuple if isinstance(second_tuple, tuple) else (second_tuple, None)
     seen = set()
     merged = []
-    for p in first + second:
+    for p in (first_products or []) + (second_products or []):
         name = p.get("product", "").lower().strip()
         if name and name not in seen:
             seen.add(name)
             merged.append(p)
-    return merged
+    # Use whichever fine print we found
+    fine_print = fine_print1 or fine_print2
+    return merged, fine_print
 
 def parse_date(date_str):
     if not date_str or date_str == 'null':
@@ -514,6 +518,13 @@ def upload_image_to_supabase(image_bytes, filename):
 def save_products(products, store_name, page_num, page_image_url, catalogue_name, valid_from, valid_until):
     if not products:
         return 0
+    # Default valid_until = valid_from + 14 days if not provided
+    if not valid_until and valid_from:
+        try:
+            from_date = datetime.strptime(valid_from, "%Y-%m-%d")
+            valid_until = (from_date + timedelta(days=14)).strftime("%Y-%m-%d")
+        except:
+            pass
     records = []
     for p in products:
         product_valid_until = parse_date(p.get("valid_until"))
@@ -536,7 +547,8 @@ def save_products(products, store_name, page_num, page_image_url, catalogue_name
             "page_image_url": page_image_url,
             "page_number": page_num,
             "catalogue_name": catalogue_name,
-            "catalogue_week": datetime.now().strftime("%Y-W%V")
+            "catalogue_week": datetime.now().strftime("%Y-W%V"),
+            "fine_print": p.get("fine_print") if p.get("fine_print") not in [None, "null"] else None
         })
     if not records:
         return 0
@@ -548,6 +560,25 @@ def save_products(products, store_name, page_num, page_image_url, catalogue_name
     }
     response = requests.post(f"{SUPABASE_URL}/rest/v1/products", headers=headers, json=records)
     return len(records) if response.status_code in [200, 201] else 0
+
+def save_catalogue(store_name, catalogue_name, valid_from, valid_until, fine_print, pages, products_count):
+    """Save or update catalogue record with fine print"""
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal"
+    }
+    record = {
+        "store": store_name,
+        "catalogue_name": catalogue_name,
+        "valid_from": valid_from,
+        "valid_until": valid_until,
+        "fine_print": fine_print,
+        "pages": pages,
+        "products_count": products_count
+    }
+    requests.post(f"{SUPABASE_URL}/rest/v1/catalogues", headers=headers, json=record)
 
 # ===========================
 # FLASK ROUTES
@@ -582,6 +613,7 @@ def upload():
         doc = fitz.open(temp_path)
         total_pages = len(doc)
         total_products = 0
+        catalogue_fine_print = None
         
         for page_num in range(total_pages):
             page = doc[page_num]
@@ -597,7 +629,9 @@ def upload():
             # Double pass extraction
             first_pass = extract_products(img_base64, store_name, page_num + 1, attempt=1)
             second_pass = extract_products(img_base64, store_name, page_num + 1, attempt=2)
-            merged = merge_results(first_pass, second_pass)
+            merged, page_fine_print = merge_results(first_pass, second_pass)
+            if page_fine_print:
+                catalogue_fine_print = catalogue_fine_print + " " + page_fine_print if catalogue_fine_print else page_fine_print
             
             if merged:
                 saved = save_products(merged, store_name, page_num + 1, page_image_url, catalogue_name, valid_from, valid_until)
@@ -605,6 +639,9 @@ def upload():
         
         doc.close()
         os.remove(temp_path)
+        
+        # Save catalogue record with accumulated fine print
+        save_catalogue(store_name, catalogue_name, valid_from, valid_until, catalogue_fine_print, total_pages, total_products)
         
         return jsonify({
             "success": True,
@@ -626,8 +663,15 @@ def get_products():
     
     active = requests.get(f"{SUPABASE_URL}/rest/v1/products?valid_from=lte.{today}&valid_until=gte.{today}&is_expired=eq.false&limit=300&order=store", headers=headers)
     upcoming = requests.get(f"{SUPABASE_URL}/rest/v1/products?valid_from=gt.{today}&valid_from=lte.{future}&is_expired=eq.false&limit=100&order=valid_from", headers=headers)
+    catalogues = requests.get(f"{SUPABASE_URL}/rest/v1/catalogues?valid_until=gte.{today}&select=store,fine_print", headers=headers)
     
-    return active.json() if active.status_code == 200 else [], upcoming.json() if upcoming.status_code == 200 else []
+    catalogue_fine_prints = {}
+    if catalogues.status_code == 200:
+        for c in catalogues.json():
+            if c.get("fine_print"):
+                catalogue_fine_prints[c["store"]] = c["fine_print"]
+    
+    return active.json() if active.status_code == 200 else [], upcoming.json() if upcoming.status_code == 200 else [], catalogue_fine_prints
 
 def get_or_create_user(phone):
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
@@ -642,7 +686,7 @@ def update_user(phone, updates):
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
     requests.patch(f"{SUPABASE_URL}/rest/v1/users?phone=eq.{phone}", headers=headers, json=updates)
 
-def format_products_for_ai(active, upcoming):
+def format_products_for_ai(active, upcoming, fine_prints={}):
     result = ""
     if active:
         result += "=== AKTIVNE AKCIJE DANAS ===\n"
@@ -652,6 +696,7 @@ def format_products_for_ai(active, upcoming):
             if p.get('quantity'): result += f" {p.get('quantity')}"
             result += f" | {p.get('sale_price')}"
             if p.get('original_price'): result += f" (bilo {p.get('original_price')})"
+            if p.get('fine_print'): result += f" | Napomena: {p.get('fine_print')}"
             result += f" | do: {p.get('valid_until')}\n"
     if upcoming:
         result += "\n=== NADOLAZECE AKCIJE ===\n"
@@ -660,6 +705,10 @@ def format_products_for_ai(active, upcoming):
             if p.get('brand'): result += f" ({p.get('brand')})"
             result += f" | {p.get('sale_price')}"
             result += f" | POCINJE: {p.get('valid_from')} do {p.get('valid_until')}\n"
+    if fine_prints:
+        result += "\n=== NAPOMENE PO TRGOVINAMA ===\n"
+        for store, fp in fine_prints.items():
+            result += f"{store}: {fp}\n"
     return result or "Baza je prazna."
 
 def ask_gemini(user_message, products_context, user_profile):
@@ -687,8 +736,8 @@ def webhook():
     sender = request.form.get("From", "")
     print(f"Message from {sender}: {incoming_message}")
     user = get_or_create_user(sender)
-    active, upcoming = get_products()
-    products_context = format_products_for_ai(active, upcoming)
+    active, upcoming, fine_prints = get_products()
+    products_context = format_products_for_ai(active, upcoming, fine_prints)
     ai_response = ask_gemini(incoming_message, products_context, user)
     update_user(sender, {"total_searches": (user.get("total_searches") or 0) + 1, "last_active": date.today().strftime("%Y-%m-%d")})
     resp = MessagingResponse()
