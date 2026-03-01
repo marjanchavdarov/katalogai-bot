@@ -27,8 +27,12 @@ def ask_gemini(user_message):
         }
         response = requests.post(url, json=payload, timeout=30)
         data = response.json()
-        print(f"Gemini response: {data}")
-return data["candidates"][0]["content"]["parts"][0]["text"]
+        print(f"Gemini full response: {data}")
+        if "candidates" in data:
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            print(f"No candidates in response: {data}")
+            return f"Greška: {data.get('error', {}).get('message', 'Unknown error')}"
     except Exception as e:
         print(f"Gemini error: {e}")
         return "Oprostite, došlo je do greške. Pokušajte ponovno! 🙏"
@@ -46,6 +50,11 @@ def webhook():
 @app.route("/", methods=["GET"])
 def home():
     return "katalog.ai bot is running! 🚀"
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
