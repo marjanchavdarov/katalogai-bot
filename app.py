@@ -1,98 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string
-from twilio.twiml.messaging_response import MessagingResponse
-import requests
-import os
-import json
-import base64
-import threading
-from datetime import datetime, date, timedelta
-import re
-
-app = Flask(__name__)
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-# ===========================
-# UPLOAD TOOL HTML
-# ===========================
-UPLOAD_HTML = '''<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>katalog.ai Upload</title>
-<style>
-body{font-family:monospace;background:#111;color:#eee;padding:40px;max-width:700px;margin:0 auto}
-h1{color:#00ff88}
-input{background:#222;border:1px solid #444;color:#eee;padding:8px;width:100%;margin:5px 0 15px 0;font-family:monospace;display:block}
-label{color:#aaa;font-size:13px}
-button{background:#00ff88;color:#000;border:none;padding:15px;font-weight:bold;font-size:16px;cursor:pointer;width:100%;margin-top:10px}
-#log{background:#000;padding:20px;margin-top:20px;min-height:100px;font-size:12px;line-height:1.8;white-space:pre-wrap}
-</style>
-</head>
-<body>
-<h1>katalog.ai - Upload</h1>
-<label>PDF File:</label>
-<input type="file" id="f">
-<label>Store:</label>
-<input type="text" id="s" placeholder="Lidl">
-<label>Valid From:</label>
-<input type="text" id="vf" placeholder="2026-03-02">
-<label>Valid Until (empty = 14 days):</label>
-<input type="text" id="vu" placeholder="2026-03-16">
-<button onclick="go()">Process</button>
-<div id="log">Ready.</div>
-<script>
-function go(){
-var f=document.getElementById("f").files[0];
-var s=document.getElementById("s").value;
-var vf=document.getElementById("vf").value;
-var vu=document.getElementById("vu").value;
-if(!f){alert("Pick a file");return;}
-if(!s){alert("Enter store");return;}
-if(!vf){alert("Enter date");return;}
-if(!vu){var d=new Date(vf);d.setDate(d.getDate()+14);vu=d.toISOString().split("T")[0];}
-var btn=document.querySelector("button");
-btn.disabled=true;
-var log=document.getElementById("log");
-log.textContent="Uploading...";
-var fd=new FormData();
-fd.append("file",f);
-fd.append("store",s);
-fd.append("valid_from",vf);
-fd.append("valid_until",vu);
-fetch("/upload",{method:"POST",body:fd}).then(function(r){
-var reader=r.body.getReader();
-var dec=new TextDecoder();
-var buf="";
-function read(){
-reader.read().then(function(res){
-if(res.done)return;
-buf+=dec.decode(res.value,{stream:true});
-var lines=buf.split("\n");
-buf=lines.pop();
-for(var i=0;i<lines.length;i++){
-var line=lines[i].trim();
-if(!line)continue;
-try{
-var data=JSON.parse(line);
-if(data.type==="start"){log.textContent+="Pages: "+data.pages+"\n";}
-else if(data.type==="page"){log.textContent+="Page "+data.page+"/"+data.total_pages+": "+data.products_found+" products\n";log.scrollTop=log.scrollHeight;}
-else if(data.type==="done"){log.textContent+="DONE! "+data.products+" products!\n";btn.disabled=false;btn.textContent="Process Another";}
-else if(data.type==="error"){log.textContent+="ERROR: "+data.message+"\n";btn.disabled=false;}
-}catch(e){}
-}
-read();
-});
-}
-read();
-}).catch(function(e){log.textContent+="ERROR: "+e.message;btn.disabled=false;});
-}
-</script>
-</body>
-</html>'''
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify
 from twilio.twiml.messaging_response import MessagingResponse
 import requests
 import os
@@ -144,7 +50,7 @@ button:disabled{background:#444;color:#888;cursor:not-allowed}
 <script src="/static/upload.js"></script>
 </body>
 </html>'''
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify
 from twilio.twiml.messaging_response import MessagingResponse
 import requests
 import os
@@ -265,7 +171,7 @@ function startUpload() {
 </script>
 </body>
 </html>'''
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify
 from twilio.twiml.messaging_response import MessagingResponse
 import requests
 import os
@@ -539,7 +445,7 @@ def save_catalogue(store_name, catalogue_name, valid_from, valid_until, fine_pri
 
 @app.route("/upload-tool")
 def upload_tool():
-    return render_template_string(UPLOAD_HTML)
+    return app.send_static_file("upload.html")
 
 @app.route("/upload", methods=["POST"])
 def upload():
