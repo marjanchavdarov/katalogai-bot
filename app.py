@@ -342,6 +342,7 @@ function parseFilename(filename) {
 }
 
 function handleFiles(files) {
+  alert('Files selected: ' + files.length + ' - First file: ' + (files[0] ? files[0].name : 'none'));
   selectedFiles = Array.from(files);
   const fileList = document.getElementById('fileList');
   fileList.innerHTML = '';
