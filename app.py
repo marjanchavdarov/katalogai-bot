@@ -414,18 +414,54 @@ async function startUpload() {
         body: formData
       });
       
-      const result = await response.json();
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fileProducts = 0;
+      let filePages = 0;
       
-      if (result.success) {
-        totalProducts += result.products;
-        totalPages += result.pages;
-        document.getElementById('status-' + fileIndex).textContent = result.products + ' products';
-        document.getElementById('status-' + fileIndex).className = 'status status-done';
-        addLog(`✓ ${info.store}: ${result.products} products from ${result.pages} pages`, 'success');
-      } else {
-        document.getElementById('status-' + fileIndex).textContent = 'Error';
-        document.getElementById('status-' + fileIndex).className = 'status status-error';
-        addLog(`✗ ${info.store}: ${result.error}`, 'error');
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            
+            if (data.type === 'start') {
+              addLog(`${info.store}: ${data.pages} pages to process...`);
+            } else if (data.type === 'page') {
+              fileProducts = data.total_products;
+              filePages = data.page;
+              document.getElementById('status-' + fileIndex).textContent = `Page ${data.page}/${data.total_pages} (${data.total_products} products)`;
+              document.getElementById('statProducts').textContent = totalProducts + fileProducts;
+              document.getElementById('statPages').textContent = totalPages + filePages;
+              document.getElementById('stats').style.display = 'grid';
+              if (data.products_found > 0) {
+                addLog(`Page ${data.page}: ${data.products_found} products found, ${data.products_saved} saved`, 'success');
+              }
+            } else if (data.type === 'done') {
+              totalProducts += data.products;
+              totalPages += data.pages;
+              document.getElementById('status-' + fileIndex).textContent = data.products + ' products';
+              document.getElementById('status-' + fileIndex).className = 'status status-done';
+              addLog(`✓ ${info.store}: ${data.products} products from ${data.pages} pages`, 'success');
+            } else if (data.type === 'error') {
+              document.getElementById('status-' + fileIndex).textContent = 'Error';
+              document.getElementById('status-' + fileIndex).className = 'status status-error';
+              addLog(`✗ ${info.store}: ${data.message}`, 'error');
+            } else if (data.type === 'page_error') {
+              addLog(`Page ${data.page} error: ${data.error}`, 'error');
+            }
+          } catch(e) {
+            console.log('Parse error:', line);
+          }
+        }
       }
     } catch (err) {
       document.getElementById('status-' + fileIndex).textContent = 'Error';
@@ -595,62 +631,84 @@ def upload():
     except:
         return jsonify({"success": False, "error": "PyMuPDF not installed"})
     
-    try:
-        file = request.files.get("file")
-        store_name = request.form.get("store")
-        valid_from = request.form.get("valid_from")
-        valid_until = request.form.get("valid_until")
-        
-        if not file or not store_name or not valid_from or not valid_until:
-            return jsonify({"success": False, "error": "Missing required fields"})
-        
-        # Save file temporarily
-        temp_path = f"/tmp/{file.filename}"
-        file.save(temp_path)
-        
-        # Process PDF
-        catalogue_name = file.filename.replace(".pdf", "")
-        doc = fitz.open(temp_path)
-        total_pages = len(doc)
-        total_products = 0
-        catalogue_fine_print = None
-        
-        for page_num in range(total_pages):
-            page = doc[page_num]
-            mat = fitz.Matrix(2.5, 2.5)
-            pix = page.get_pixmap(matrix=mat)
-            img_bytes = pix.tobytes("jpeg")
-            img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+    def generate():
+        try:
+            file = request.files.get("file")
+            store_name = request.form.get("store")
+            valid_from = request.form.get("valid_from")
+            valid_until = request.form.get("valid_until")
             
-            # Upload page image
-            page_filename = f"{store_name.lower()}_page_{str(page_num+1).zfill(3)}.jpg"
-            page_image_url = upload_image_to_supabase(img_bytes, page_filename)
+            if not file or not store_name or not valid_from or not valid_until:
+                yield json.dumps({"type": "error", "message": "Missing required fields"}) + "\n"
+                return
             
-            # Double pass extraction
-            first_pass = extract_products(img_base64, store_name, page_num + 1, attempt=1)
-            second_pass = extract_products(img_base64, store_name, page_num + 1, attempt=2)
-            merged, page_fine_print = merge_results(first_pass, second_pass)
-            if page_fine_print:
-                catalogue_fine_print = catalogue_fine_print + " " + page_fine_print if catalogue_fine_print else page_fine_print
+            temp_path = f"/tmp/{file.filename}"
+            file.save(temp_path)
             
-            if merged:
-                saved = save_products(merged, store_name, page_num + 1, page_image_url, catalogue_name, valid_from, valid_until)
-                total_products += saved
-        
-        doc.close()
-        os.remove(temp_path)
-        
-        # Save catalogue record with accumulated fine print
-        save_catalogue(store_name, catalogue_name, valid_from, valid_until, catalogue_fine_print, total_pages, total_products)
-        
-        return jsonify({
-            "success": True,
-            "products": total_products,
-            "pages": total_pages
-        })
-        
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
+            catalogue_name = file.filename.replace(".pdf", "")
+            doc = fitz.open(temp_path)
+            total_pages = len(doc)
+            total_products = 0
+            catalogue_fine_print = None
+            
+            yield json.dumps({"type": "start", "pages": total_pages}) + "\n"
+            
+            for page_num in range(total_pages):
+                try:
+                    page = doc[page_num]
+                    mat = fitz.Matrix(2.5, 2.5)
+                    pix = page.get_pixmap(matrix=mat)
+                    img_bytes = pix.tobytes("jpeg")
+                    img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                    
+                    page_filename = f"{store_name.lower()}_page_{str(page_num+1).zfill(3)}.jpg"
+                    page_image_url = upload_image_to_supabase(img_bytes, page_filename)
+                    
+                    first_pass = extract_products(img_base64, store_name, page_num + 1, attempt=1)
+                    second_pass = extract_products(img_base64, store_name, page_num + 1, attempt=2)
+                    merged, page_fine_print = merge_results(first_pass, second_pass)
+                    
+                    if page_fine_print:
+                        catalogue_fine_print = (catalogue_fine_print + " " + page_fine_print) if catalogue_fine_print else page_fine_print
+                    
+                    saved = 0
+                    if merged:
+                        saved = save_products(merged, store_name, page_num + 1, page_image_url, catalogue_name, valid_from, valid_until)
+                        total_products += saved
+                    
+                    yield json.dumps({
+                        "type": "page",
+                        "page": page_num + 1,
+                        "total_pages": total_pages,
+                        "products_found": len(merged) if merged else 0,
+                        "products_saved": saved,
+                        "total_products": total_products
+                    }) + "\n"
+                    
+                except Exception as page_error:
+                    print(f"Page {page_num+1} error: {page_error}")
+                    yield json.dumps({"type": "page_error", "page": page_num+1, "error": str(page_error)}) + "\n"
+                    continue
+            
+            doc.close()
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+            
+            save_catalogue(store_name, catalogue_name, valid_from, valid_until, catalogue_fine_print, total_pages, total_products)
+            
+            yield json.dumps({
+                "type": "done",
+                "products": total_products,
+                "pages": total_pages
+            }) + "\n"
+            
+        except Exception as e:
+            print(f"Upload error: {e}")
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+    
+    return app.response_class(generate(), mimetype="application/x-ndjson")
 
 # ===========================
 # WHATSAPP BOT
