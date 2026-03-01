@@ -18,479 +18,128 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 # UPLOAD TOOL HTML
 # ===========================
 UPLOAD_HTML = '''<!DOCTYPE html>
-<html lang="hr">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>katalog.ai — Upload Tool</title>
+<title>katalog.ai Upload</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=DM+Mono:wght@300;400;500&display=swap');
-  
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  
-  :root {
-    --bg: #0a0a0a;
-    --surface: #111111;
-    --border: #222222;
-    --accent: #00ff88;
-    --accent2: #ff3366;
-    --text: #f0f0f0;
-    --muted: #666666;
-  }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    min-height: 100vh;
-    padding: 40px 20px;
-  }
-
-  .container { max-width: 800px; margin: 0 auto; }
-
-  header { margin-bottom: 60px; }
-  
-  .logo {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 2.5rem;
-    letter-spacing: -2px;
-  }
-  
-  .logo span { color: var(--accent); }
-  
-  .subtitle {
-    color: var(--muted);
-    font-size: 0.8rem;
-    margin-top: 6px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    padding: 32px;
-    margin-bottom: 24px;
-  }
-
-  .card-title {
-    font-family: 'Syne', sans-serif;
-    font-weight: 600;
-    font-size: 0.7rem;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 20px;
-  }
-
-  .format-box {
-    background: #0d0d0d;
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    padding: 16px 20px;
-    font-size: 0.8rem;
-    line-height: 2;
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-
-  .format-box code {
-    color: var(--accent);
-    font-family: 'DM Mono', monospace;
-  }
-
-  .dropzone {
-    border: 2px dashed var(--border);
-    border-radius: 2px;
-    padding: 60px 40px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-    margin-bottom: 24px;
-  }
-
-  .dropzone:hover, .dropzone.dragover {
-    border-color: var(--accent);
-    background: rgba(0, 255, 136, 0.03);
-  }
-
-  .dropzone input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-    width: 100%;
-    height: 100%;
-  }
-
-  .dropzone-icon {
-    font-size: 3rem;
-    margin-bottom: 16px;
-    display: block;
-  }
-
-  .dropzone-text {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin-bottom: 8px;
-  }
-
-  .dropzone-hint {
-    font-size: 0.75rem;
-    color: var(--muted);
-  }
-
-  .file-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 24px;
-  }
-
-  .file-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: #0d0d0d;
-    border: 1px solid var(--border);
-    padding: 12px 16px;
-    font-size: 0.8rem;
-  }
-
-  .file-item .name { flex: 1; color: var(--text); }
-  .file-item .store { color: var(--accent); min-width: 80px; }
-  .file-item .dates { color: var(--muted); font-size: 0.7rem; }
-  .file-item .status { min-width: 80px; text-align: right; }
-
-  .status-pending { color: var(--muted); }
-  .status-processing { color: #ffaa00; }
-  .status-done { color: var(--accent); }
-  .status-error { color: var(--accent2); }
-
-  .btn {
-    background: var(--accent);
-    color: #000;
-    border: none;
-    padding: 16px 40px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 0.9rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    width: 100%;
-  }
-
-  .btn:hover { background: #00cc6e; }
-  .btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
-
-  .progress-section { display: none; }
-  .progress-section.visible { display: block; }
-
-  .progress-bar-wrap {
-    background: var(--border);
-    height: 3px;
-    margin: 16px 0;
-    overflow: hidden;
-  }
-
-  .progress-bar {
-    height: 100%;
-    background: var(--accent);
-    width: 0%;
-    transition: width 0.3s ease;
-  }
-
-  .log {
-    background: #000;
-    border: 1px solid var(--border);
-    padding: 20px;
-    font-size: 0.75rem;
-    line-height: 1.8;
-    max-height: 300px;
-    overflow-y: auto;
-    color: var(--muted);
-  }
-
-  .log .success { color: var(--accent); }
-  .log .error { color: var(--accent2); }
-  .log .info { color: #888; }
-
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin-top: 24px;
-  }
-
-  .stat {
-    background: #0d0d0d;
-    border: 1px solid var(--border);
-    padding: 20px;
-    text-align: center;
-  }
-
-  .stat-value {
-    font-family: 'Syne', sans-serif;
-    font-size: 2rem;
-    font-weight: 800;
-    color: var(--accent);
-  }
-
-  .stat-label {
-    font-size: 0.65rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-top: 4px;
-  }
-
-  .warning {
-    background: rgba(255, 51, 102, 0.05);
-    border: 1px solid rgba(255, 51, 102, 0.2);
-    border-left: 3px solid var(--accent2);
-    padding: 12px 16px;
-    font-size: 0.75rem;
-    color: #ff6688;
-    margin-bottom: 16px;
-  }
+body { font-family: monospace; background: #111; color: #eee; padding: 40px; max-width: 700px; margin: 0 auto; }
+h1 { color: #00ff88; }
+.info { background: #222; padding: 15px; margin: 20px 0; border-left: 3px solid #00ff88; font-size: 13px; }
+input[type=file] { display: block; margin: 20px 0; color: #eee; font-size: 14px; }
+input[type=text] { background: #222; border: 1px solid #444; color: #eee; padding: 8px; width: 100%; margin: 5px 0 15px 0; font-family: monospace; }
+label { color: #aaa; font-size: 13px; }
+button { background: #00ff88; color: #000; border: none; padding: 15px 30px; font-weight: bold; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
+button:disabled { background: #444; color: #888; cursor: not-allowed; }
+#log { background: #000; padding: 20px; margin-top: 20px; min-height: 100px; font-size: 12px; line-height: 1.8; white-space: pre-wrap; }
+.ok { color: #00ff88; }
+.err { color: #ff3366; }
 </style>
 </head>
 <body>
-<div class="container">
-  <header>
-    <div class="logo">katalog<span>.ai</span></div>
-    <div class="subtitle">Upload Tool — Catalogue Processor</div>
-  </header>
+<h1>katalog.ai — Upload Tool</h1>
 
-  <div class="card">
-    <div class="card-title">File naming format</div>
-    <div class="format-box">
-      Rename your PDFs before uploading:<br>
-      <code>Konzum_2026-03-03_2026-03-09.pdf</code><br>
-      <code>Lidl_2026-03-02_2026-03-08.pdf</code><br>
-      <code>DM_2026-03-01_2026-03-15.pdf</code><br>
-      <code>Kaufland_2026-03-03_2026-03-09.pdf</code><br>
-      <br>
-      Pattern: <code>StoreName_ValidFrom_ValidUntil.pdf</code>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Upload Catalogues</div>
-    
-    <div class="dropzone" id="dropzone">
-      <input type="file" id="fileInput" multiple accept=".pdf" onchange="handleFiles(this.files)">
-      <span class="dropzone-icon">📂</span>
-      <div class="dropzone-text">Drop PDF catalogues here</div>
-      <div class="dropzone-hint">or click to browse — multiple files supported</div>
-    </div>
-
-    <div class="file-list" id="fileList"></div>
-
-    <button class="btn" id="uploadBtn" onclick="startUpload()" disabled>
-      Process All Catalogues
-    </button>
-  </div>
-
-  <div class="card progress-section" id="progressSection">
-    <div class="card-title">Processing</div>
-    <div id="progressText" style="font-size:0.8rem; color: var(--muted);">Initializing...</div>
-    <div class="progress-bar-wrap">
-      <div class="progress-bar" id="progressBar"></div>
-    </div>
-    <div class="log" id="log"></div>
-    <div class="stats" id="stats" style="display:none">
-      <div class="stat">
-        <div class="stat-value" id="statFiles">0</div>
-        <div class="stat-label">Catalogues</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value" id="statProducts">0</div>
-        <div class="stat-label">Products</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value" id="statPages">0</div>
-        <div class="stat-label">Pages</div>
-      </div>
-    </div>
-  </div>
+<div class="info">
+Select your PDF catalogue, fill in the details, and click Process.<br>
+No need to rename files here — just fill in the form!
 </div>
 
+<label>PDF Catalogue:</label>
+<input type="file" id="fileInput" accept=".pdf,application/pdf">
+
+<label>Store Name:</label>
+<input type="text" id="storeName" placeholder="e.g. Lidl, Konzum, DM">
+
+<label>Valid From (YYYY-MM-DD):</label>
+<input type="text" id="validFrom" placeholder="e.g. 2026-03-02">
+
+<label>Valid Until (YYYY-MM-DD, leave empty for 14 days):</label>
+<input type="text" id="validUntil" placeholder="e.g. 2026-03-16 (optional)">
+
+<button id="btn" onclick="startUpload()">Process Catalogue</button>
+
+<div id="log">Waiting for upload...</div>
+
 <script>
-let selectedFiles = [];
-let totalProducts = 0;
-let totalPages = 0;
-
-function parseFilename(filename) {
-  const base = filename.replace('.pdf', '');
-  const parts = base.split('_');
-  if (parts.length >= 3) {
-    return {
-      store: parts[0],
-      validFrom: parts[1],
-      validUntil: parts[2],
-      valid: true
-    };
-  }
-  return { store: base, validFrom: null, validUntil: null, valid: false };
-}
-
-function handleFiles(files) {
-  alert('Files selected: ' + files.length + ' - First file: ' + (files[0] ? files[0].name : 'none'));
-  selectedFiles = Array.from(files);
-  const fileList = document.getElementById('fileList');
-  fileList.innerHTML = '';
-  
-  selectedFiles.forEach((file, i) => {
-    const info = parseFilename(file.name);
-    const item = document.createElement('div');
-    item.className = 'file-item';
-    item.id = 'file-' + i;
-    
-    if (!info.valid) {
-      item.innerHTML = `
-        <div class="name">${file.name}</div>
-        <div class="status status-error">⚠ Bad name</div>
-      `;
-    } else {
-      item.innerHTML = `
-        <div class="name">${file.name}</div>
-        <div class="store">${info.store}</div>
-        <div class="dates">${info.validFrom} → ${info.validUntil}</div>
-        <div class="status status-pending" id="status-${i}">Pending</div>
-      `;
+document.getElementById("fileInput").addEventListener("change", function() {
+    const f = this.files[0];
+    if (f) {
+        document.getElementById("log").textContent = "File selected: " + f.name + " (" + Math.round(f.size/1024/1024) + " MB)";
     }
-    fileList.appendChild(item);
-  });
-  
-  const validFiles = selectedFiles.filter(f => parseFilename(f.name).valid);
-  document.getElementById('uploadBtn').disabled = validFiles.length === 0;
-}
-
-function addLog(message, type = 'info') {
-  const log = document.getElementById('log');
-  const line = document.createElement('div');
-  line.className = type;
-  line.textContent = new Date().toLocaleTimeString() + ' — ' + message;
-  log.appendChild(line);
-  log.scrollTop = log.scrollHeight;
-}
+});
 
 async function startUpload() {
-  const validFiles = selectedFiles.filter(f => parseFilename(f.name).valid);
-  if (validFiles.length === 0) return;
-  
-  document.getElementById('progressSection').classList.add('visible');
-  document.getElementById('uploadBtn').disabled = true;
-  totalProducts = 0;
-  totalPages = 0;
-  
-  for (let i = 0; i < validFiles.length; i++) {
-    const file = validFiles[i];
-    const info = parseFilename(file.name);
-    const fileIndex = selectedFiles.indexOf(file);
+    const fileInput = document.getElementById("fileInput");
+    const store = document.getElementById("storeName").value.trim();
+    const validFrom = document.getElementById("validFrom").value.trim();
+    let validUntil = document.getElementById("validUntil").value.trim();
     
-    document.getElementById('status-' + fileIndex).textContent = 'Processing...';
-    document.getElementById('status-' + fileIndex).className = 'status status-processing';
-    document.getElementById('progressText').textContent = `Processing ${i+1}/${validFiles.length}: ${info.store}`;
-    document.getElementById('progressBar').style.width = ((i / validFiles.length) * 100) + '%';
+    if (!fileInput.files[0]) { alert("Please select a PDF file!"); return; }
+    if (!store) { alert("Please enter store name!"); return; }
+    if (!validFrom) { alert("Please enter valid from date!"); return; }
     
-    addLog(`Starting ${info.store} (${info.validFrom} to ${info.validUntil})...`);
-    
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('store', info.store);
-      formData.append('valid_from', info.validFrom);
-      formData.append('valid_until', info.validUntil);
-      
-      const response = await fetch('/upload', {
-        method: 'POST',
-        body: formData
-      });
-      
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let fileProducts = 0;
-      let filePages = 0;
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const data = JSON.parse(line);
-            
-            if (data.type === 'start') {
-              addLog(`${info.store}: ${data.pages} pages to process...`);
-            } else if (data.type === 'page') {
-              fileProducts = data.total_products;
-              filePages = data.page;
-              document.getElementById('status-' + fileIndex).textContent = `Page ${data.page}/${data.total_pages} (${data.total_products} products)`;
-              document.getElementById('statProducts').textContent = totalProducts + fileProducts;
-              document.getElementById('statPages').textContent = totalPages + filePages;
-              document.getElementById('stats').style.display = 'grid';
-              if (data.products_found > 0) {
-                addLog(`Page ${data.page}: ${data.products_found} products found, ${data.products_saved} saved`, 'success');
-              }
-            } else if (data.type === 'done') {
-              totalProducts += data.products;
-              totalPages += data.pages;
-              document.getElementById('status-' + fileIndex).textContent = data.products + ' products';
-              document.getElementById('status-' + fileIndex).className = 'status status-done';
-              addLog(`✓ ${info.store}: ${data.products} products from ${data.pages} pages`, 'success');
-            } else if (data.type === 'error') {
-              document.getElementById('status-' + fileIndex).textContent = 'Error';
-              document.getElementById('status-' + fileIndex).className = 'status status-error';
-              addLog(`✗ ${info.store}: ${data.message}`, 'error');
-            } else if (data.type === 'page_error') {
-              addLog(`Page ${data.page} error: ${data.error}`, 'error');
-            }
-          } catch(e) {
-            console.log('Parse error:', line);
-          }
-        }
-      }
-    } catch (err) {
-      document.getElementById('status-' + fileIndex).textContent = 'Error';
-      document.getElementById('status-' + fileIndex).className = 'status status-error';
-      addLog(`✗ ${info.store}: ${err.message}`, 'error');
+    // Default 14 days if no end date
+    if (!validUntil) {
+        const from = new Date(validFrom);
+        from.setDate(from.getDate() + 14);
+        validUntil = from.toISOString().split("T")[0];
     }
     
-    document.getElementById('statFiles').textContent = i + 1;
-    document.getElementById('statProducts').textContent = totalProducts;
-    document.getElementById('statPages').textContent = totalPages;
-    document.getElementById('stats').style.display = 'grid';
-  }
-  
-  document.getElementById('progressBar').style.width = '100%';
-  document.getElementById('progressText').textContent = 'All catalogues processed!';
-  addLog('All done! Database updated successfully.', 'success');
-  document.getElementById('uploadBtn').disabled = false;
+    const btn = document.getElementById("btn");
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+    
+    const log = document.getElementById("log");
+    log.textContent = "Starting upload...\n";
+    
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+    formData.append("store", store);
+    formData.append("valid_from", validFrom);
+    formData.append("valid_until", validUntil);
+    
+    try {
+        const response = await fetch("/upload", { method: "POST", body: formData });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const data = JSON.parse(line);
+                    if (data.type === "start") {
+                        log.textContent += "Total pages: " + data.pages + "\n";
+                    } else if (data.type === "page") {
+                        log.textContent += "Page " + data.page + "/" + data.total_pages + ": " + data.products_found + " products\n";
+                        log.scrollTop = log.scrollHeight;
+                    } else if (data.type === "done") {
+                        log.textContent += "\n✓ DONE! " + data.products + " products saved from " + data.pages + " pages!\n";
+                        log.scrollTop = log.scrollHeight;
+                        btn.textContent = "Process Another Catalogue";
+                        btn.disabled = false;
+                    } else if (data.type === "error") {
+                        log.textContent += "ERROR: " + data.message + "\n";
+                        btn.disabled = false;
+                        btn.textContent = "Try Again";
+                    } else if (data.type === "page_error") {
+                        log.textContent += "Page " + data.page + " error: " + data.error + "\n";
+                    }
+                } catch(e) {}
+            }
+        }
+    } catch(err) {
+        log.textContent += "ERROR: " + err.message + "\n";
+        btn.disabled = false;
+        btn.textContent = "Try Again";
+    }
 }
-
-// Drag and drop
-const dropzone = document.getElementById('dropzone');
-dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dropzone.classList.remove('dragover');
-  handleFiles(e.dataTransfer.files);
-});
 </script>
 </body>
 </html>'''
