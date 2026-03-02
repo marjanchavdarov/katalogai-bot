@@ -455,6 +455,10 @@ def webhook():
 @app.route("/", methods=["GET"])
 def home():
     return "katalog.ai is running! Go to /upload-tool to upload catalogues. 🚀"
+    
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})   
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
