@@ -469,6 +469,29 @@ def webhook():
 def home():
     return "katalog.ai is running! Go to /upload-tool to upload catalogues. 🚀"
 
+@app.route("/upload-tool")
+def upload_tool():
+    return UPLOAD_HTML
+
+@app.route("/upload-tool-simple")
+def upload_tool_simple():
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head><title>Simple Upload</title></head>
+    <body>
+        <h1>Simple Upload Test</h1>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <input type="file" name="file"><br><br>
+            <input type="text" name="store" placeholder="Store Name"><br><br>
+            <input type="text" name="valid_from" placeholder="Valid From (YYYY-MM-DD)"><br><br>
+            <input type="text" name="valid_until" placeholder="Valid Until (YYYY-MM-DD)"><br><br>
+            <button type="submit">Upload PDF</button>
+        </form>
+    </body>
+    </html>
+    '''
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
