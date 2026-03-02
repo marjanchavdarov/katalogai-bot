@@ -7,6 +7,7 @@ import base64
 import threading
 from datetime import datetime, date, timedelta
 import re
+import io
 
 app = Flask(__name__)
 
@@ -276,9 +277,10 @@ def upload_tool():
 @app.route("/upload", methods=["POST"])
 def upload():
     try:
-        import fitz
+        from pdf2image import convert_from_path
+        from PIL import Image
     except ImportError:
-        return jsonify({"success": False, "error": "PyMuPDF not installed. Please add it to requirements.txt"})
+        return jsonify({"success": False, "error": "pdf2image or PIL not installed. Please add them to requirements.txt"})
     
     def generate():
         try:
@@ -296,8 +298,15 @@ def upload():
             file.save(temp_path)
             
             catalogue_name = file.filename.replace(".pdf", "")
-            doc = fitz.open(temp_path)
-            total_pages = len(doc)
+            
+            # Convert PDF to images
+            try:
+                images = convert_from_path(temp_path, dpi=200)
+                total_pages = len(images)
+            except Exception as e:
+                yield json.dumps({"type": "error", "message": f"PDF conversion failed: {str(e)}"}) + "\n"
+                return
+            
             total_products = 0
             catalogue_fine_print = None
             
@@ -305,10 +314,14 @@ def upload():
             
             for page_num in range(total_pages):
                 try:
-                    page = doc[page_num]
-                    mat = fitz.Matrix(2.5, 2.5)
-                    pix = page.get_pixmap(matrix=mat)
-                    img_bytes = pix.tobytes("jpeg")
+                    # Get image from converted PDF
+                    img = images[page_num]
+                    
+                    # Convert PIL Image to bytes
+                    img_byte_arr = io.BytesIO()
+                    img.save(img_byte_arr, format='JPEG')
+                    img_bytes = img_byte_arr.getvalue()
+                    
                     img_base64 = base64.b64encode(img_bytes).decode("utf-8")
                     
                     page_filename = f"{store_name.lower()}_page_{str(page_num+1).zfill(3)}_{datetime.now().strftime('%Y%m%d')}.jpg"
@@ -340,7 +353,7 @@ def upload():
                     yield json.dumps({"type": "page_error", "page": page_num+1, "error": str(page_error)}) + "\n"
                     continue
             
-            doc.close()
+            # Clean up
             try:
                 os.remove(temp_path)
             except:
@@ -455,10 +468,10 @@ def webhook():
 @app.route("/", methods=["GET"])
 def home():
     return "katalog.ai is running! Go to /upload-tool to upload catalogues. 🚀"
-    
+
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})   
+    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
