@@ -469,9 +469,7 @@ def webhook():
 def home():
     return "katalog.ai is running! Go to /upload-tool to upload catalogues. 🚀"
 
-@app.route("/upload-tool")
-def upload_tool():
-    return UPLOAD_HTML
+
 
 @app.route("/upload-tool-simple")
 def upload_tool_simple():
