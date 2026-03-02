@@ -15,180 +15,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 # ===========================
-# UPLOAD TOOL HTML
-# ===========================
-UPLOAD_HTML = '''<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>katalog.ai Upload</title>
-<style>
-body{font-family:monospace;background:#111;color:#eee;padding:40px;max-width:700px;margin:0 auto}
-h1{color:#00ff88}
-.info{background:#222;padding:15px;margin:20px 0;border-left:3px solid #00ff88;font-size:13px}
-input[type=file]{display:block;margin:20px 0;color:#eee;font-size:14px}
-input[type=text]{background:#222;border:1px solid #444;color:#eee;padding:8px;width:100%;margin:5px 0 15px 0;font-family:monospace}
-label{color:#aaa;font-size:13px}
-button{background:#00ff88;color:#000;border:none;padding:15px 30px;font-weight:bold;font-size:16px;cursor:pointer;width:100%;margin-top:10px}
-button:disabled{background:#444;color:#888;cursor:not-allowed}
-#log{background:#000;padding:20px;margin-top:20px;min-height:100px;font-size:12px;line-height:1.8;white-space:pre-wrap}
-</style>
-</head>
-<body>
-<h1>katalog.ai - Upload Tool</h1>
-<div class="info">Select PDF, fill in the details, click Process.</div>
-<label>PDF Catalogue:</label>
-<input type="file" id="fileInput" accept=".pdf">
-<label>Store Name:</label>
-<input type="text" id="storeName" placeholder="Lidl">
-<label>Valid From (YYYY-MM-DD):</label>
-<input type="text" id="validFrom" placeholder="2026-03-02">
-<label>Valid Until (leave empty = 14 days auto):</label>
-<input type="text" id="validUntil" placeholder="2026-03-16 (optional)">
-<button id="btn" onclick="startUpload()">Process Catalogue</button>
-<div id="log">Waiting...</div>
-<script src="/static/upload.js"></script>
-</body>
-</html>'''
-from flask import Flask, request, jsonify
-from twilio.twiml.messaging_response import MessagingResponse
-import requests
-import os
-import json
-import base64
-import threading
-from datetime import datetime, date, timedelta
-import re
-
-app = Flask(__name__)
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-# ===========================
-# UPLOAD TOOL HTML
-# ===========================
-UPLOAD_HTML = '''<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>katalog.ai Upload</title>
-<style>
-body{font-family:monospace;background:#111;color:#eee;padding:40px;max-width:700px;margin:0 auto}
-h1{color:#00ff88}
-.info{background:#222;padding:15px;margin:20px 0;border-left:3px solid #00ff88;font-size:13px}
-input[type=file]{display:block;margin:20px 0;color:#eee;font-size:14px}
-input[type=text]{background:#222;border:1px solid #444;color:#eee;padding:8px;width:100%;margin:5px 0 15px 0;font-family:monospace}
-label{color:#aaa;font-size:13px}
-button{background:#00ff88;color:#000;border:none;padding:15px 30px;font-weight:bold;font-size:16px;cursor:pointer;width:100%;margin-top:10px}
-button:disabled{background:#444;color:#888;cursor:not-allowed}
-#log{background:#000;padding:20px;margin-top:20px;min-height:100px;font-size:12px;line-height:1.8;white-space:pre-wrap}
-</style>
-</head>
-<body>
-<h1>katalog.ai - Upload Tool</h1>
-<div class="info">Select PDF, fill in the details, click Process.</div>
-<label>PDF Catalogue:</label>
-<input type="file" id="fileInput" accept=".pdf">
-<label>Store Name:</label>
-<input type="text" id="storeName" placeholder="Lidl">
-<label>Valid From (YYYY-MM-DD):</label>
-<input type="text" id="validFrom" placeholder="2026-03-02">
-<label>Valid Until (YYYY-MM-DD, leave empty = 14 days auto):</label>
-<input type="text" id="validUntil" placeholder="2026-03-16 (optional)">
-<button id="btn" onclick="startUpload()">Process Catalogue</button>
-<div id="log">Waiting...</div>
-<script>
-document.getElementById("fileInput").addEventListener("change", function() {
-  var f = this.files[0];
-  if (f) { document.getElementById("log").textContent = "File: " + f.name; }
-});
-function startUpload() {
-  var fi = document.getElementById("fileInput");
-  var store = document.getElementById("storeName").value.trim();
-  var vf = document.getElementById("validFrom").value.trim();
-  var vu = document.getElementById("validUntil").value.trim();
-  if (!fi.files[0]) { alert("Select a PDF file!"); return; }
-  if (!store) { alert("Enter store name!"); return; }
-  if (!vf) { alert("Enter valid from date!"); return; }
-  if (!vu) {
-    var d = new Date(vf);
-    d.setDate(d.getDate() + 14);
-    vu = d.toISOString().split("T")[0];
-  }
-  var btn = document.getElementById("btn");
-  btn.disabled = true;
-  btn.textContent = "Processing...";
-  var log = document.getElementById("log");
-  log.textContent = "Starting...\n";
-  var fd = new FormData();
-  fd.append("file", fi.files[0]);
-  fd.append("store", store);
-  fd.append("valid_from", vf);
-  fd.append("valid_until", vu);
-  fetch("/upload", { method: "POST", body: fd }).then(function(resp) {
-    var reader = resp.body.getReader();
-    var decoder = new TextDecoder();
-    var buffer = "";
-    function read() {
-      reader.read().then(function(result) {
-        if (result.done) return;
-        buffer += decoder.decode(result.value, { stream: true });
-        var lines = buffer.split("\n");
-        buffer = lines.pop();
-        for (var i = 0; i < lines.length; i++) {
-          var line = lines[i].trim();
-          if (!line) continue;
-          try {
-            var data = JSON.parse(line);
-            if (data.type === "start") {
-              log.textContent += "Pages: " + data.pages + "\n";
-            } else if (data.type === "page") {
-              log.textContent += "Page " + data.page + "/" + data.total_pages + ": " + data.products_found + " products\n";
-              log.scrollTop = log.scrollHeight;
-            } else if (data.type === "done") {
-              log.textContent += "\nDONE! " + data.products + " products saved!\n";
-              btn.textContent = "Process Another";
-              btn.disabled = false;
-            } else if (data.type === "error") {
-              log.textContent += "ERROR: " + data.message + "\n";
-              btn.disabled = false;
-              btn.textContent = "Try Again";
-            }
-          } catch(e) {}
-        }
-        read();
-      });
-    }
-    read();
-  }).catch(function(err) {
-    log.textContent += "ERROR: " + err.message + "\n";
-    btn.disabled = false;
-    btn.textContent = "Try Again";
-  });
-}
-</script>
-</body>
-</html>'''
-from flask import Flask, request, jsonify
-from twilio.twiml.messaging_response import MessagingResponse
-import requests
-import os
-import json
-import base64
-import threading
-from datetime import datetime, date, timedelta
-import re
-
-app = Flask(__name__)
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-# ===========================
-# UPLOAD TOOL HTML
+# UPLOAD TOOL HTML (embedded as fallback)
 # ===========================
 UPLOAD_HTML = '''<!DOCTYPE html>
 <html>
@@ -205,8 +32,6 @@ label { color: #aaa; font-size: 13px; }
 button { background: #00ff88; color: #000; border: none; padding: 15px 30px; font-weight: bold; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
 button:disabled { background: #444; color: #888; cursor: not-allowed; }
 #log { background: #000; padding: 20px; margin-top: 20px; min-height: 100px; font-size: 12px; line-height: 1.8; white-space: pre-wrap; }
-.ok { color: #00ff88; }
-.err { color: #ff3366; }
 </style>
 </head>
 <body>
@@ -214,7 +39,7 @@ button:disabled { background: #444; color: #888; cursor: not-allowed; }
 
 <div class="info">
 Select your PDF catalogue, fill in the details, and click Process.<br>
-No need to rename files here — just fill in the form!
+No need to rename files — just fill in the form!
 </div>
 
 <label>PDF Catalogue:</label>
@@ -237,7 +62,7 @@ No need to rename files here — just fill in the form!
 document.getElementById("fileInput").addEventListener("change", function() {
     const f = this.files[0];
     if (f) {
-        document.getElementById("log").textContent = "File selected: " + f.name + " (" + Math.round(f.size/1024/1024) + " MB)";
+        document.getElementById("log").textContent = "File selected: " + f.name + " (" + Math.round(f.size/1024) + " KB)";
     }
 });
 
@@ -263,7 +88,7 @@ async function startUpload() {
     btn.textContent = "Processing...";
     
     const log = document.getElementById("log");
-    log.textContent = "Starting upload...\n";
+    log.textContent = "Starting upload...\\n";
     
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
@@ -281,34 +106,33 @@ async function startUpload() {
             const { done, value } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
+            const lines = buffer.split("\\n");
             buffer = lines.pop();
             for (const line of lines) {
                 if (!line.trim()) continue;
                 try {
                     const data = JSON.parse(line);
                     if (data.type === "start") {
-                        log.textContent += "Total pages: " + data.pages + "\n";
+                        log.textContent += "Total pages: " + data.pages + "\\n";
                     } else if (data.type === "page") {
-                        log.textContent += "Page " + data.page + "/" + data.total_pages + ": " + data.products_found + " products\n";
+                        log.textContent += "Page " + data.page + "/" + data.total_pages + ": " + data.products_found + " products\\n";
                         log.scrollTop = log.scrollHeight;
                     } else if (data.type === "done") {
-                        log.textContent += "\n✓ DONE! " + data.products + " products saved from " + data.pages + " pages!\n";
-                        log.scrollTop = log.scrollHeight;
+                        log.textContent += "\\n✓ DONE! " + data.products + " products saved from " + data.pages + " pages!\\n";
                         btn.textContent = "Process Another Catalogue";
                         btn.disabled = false;
                     } else if (data.type === "error") {
-                        log.textContent += "ERROR: " + data.message + "\n";
+                        log.textContent += "ERROR: " + data.message + "\\n";
                         btn.disabled = false;
                         btn.textContent = "Try Again";
                     } else if (data.type === "page_error") {
-                        log.textContent += "Page " + data.page + " error: " + data.error + "\n";
+                        log.textContent += "Page " + data.page + " error: " + data.error + "\\n";
                     }
                 } catch(e) {}
             }
         }
     } catch(err) {
-        log.textContent += "ERROR: " + err.message + "\n";
+        log.textContent += "ERROR: " + err.message + "\\n";
         btn.disabled = false;
         btn.textContent = "Try Again";
     }
@@ -335,7 +159,8 @@ def extract_products(image_base64, store_name, page_num, attempt=1):
         text = text.replace("```json", "").replace("```", "").strip()
         result = json.loads(text)
         return result if isinstance(result, list) else []
-    except:
+    except Exception as e:
+        print(f"Extract error: {e}")
         return []
 
 def merge_results(first_tuple, second_tuple):
@@ -348,7 +173,6 @@ def merge_results(first_tuple, second_tuple):
         if name and name not in seen:
             seen.add(name)
             merged.append(p)
-    # Use whichever fine print we found
     fine_print = fine_print1 or fine_print2
     return merged, fine_print
 
@@ -377,7 +201,6 @@ def upload_image_to_supabase(image_bytes, filename):
 def save_products(products, store_name, page_num, page_image_url, catalogue_name, valid_from, valid_until):
     if not products:
         return 0
-    # Default valid_until = valid_from + 14 days if not provided
     if not valid_until and valid_from:
         try:
             from_date = datetime.strptime(valid_from, "%Y-%m-%d")
@@ -421,7 +244,6 @@ def save_products(products, store_name, page_num, page_image_url, catalogue_name
     return len(records) if response.status_code in [200, 201] else 0
 
 def save_catalogue(store_name, catalogue_name, valid_from, valid_until, fine_print, pages, products_count):
-    """Save or update catalogue record with fine print"""
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -445,14 +267,18 @@ def save_catalogue(store_name, catalogue_name, valid_from, valid_until, fine_pri
 
 @app.route("/upload-tool")
 def upload_tool():
-    return app.send_static_file("upload.html")
+    # Try to serve static file first, fallback to embedded HTML
+    try:
+        return app.send_static_file("upload.html")
+    except:
+        return UPLOAD_HTML
 
 @app.route("/upload", methods=["POST"])
 def upload():
     try:
         import fitz
-    except:
-        return jsonify({"success": False, "error": "PyMuPDF not installed"})
+    except ImportError:
+        return jsonify({"success": False, "error": "PyMuPDF not installed. Please add it to requirements.txt"})
     
     def generate():
         try:
@@ -465,7 +291,8 @@ def upload():
                 yield json.dumps({"type": "error", "message": "Missing required fields"}) + "\n"
                 return
             
-            temp_path = f"/tmp/{file.filename}"
+            # Save file temporarily
+            temp_path = f"/tmp/{datetime.now().timestamp()}_{file.filename}"
             file.save(temp_path)
             
             catalogue_name = file.filename.replace(".pdf", "")
@@ -484,7 +311,7 @@ def upload():
                     img_bytes = pix.tobytes("jpeg")
                     img_base64 = base64.b64encode(img_bytes).decode("utf-8")
                     
-                    page_filename = f"{store_name.lower()}_page_{str(page_num+1).zfill(3)}.jpg"
+                    page_filename = f"{store_name.lower()}_page_{str(page_num+1).zfill(3)}_{datetime.now().strftime('%Y%m%d')}.jpg"
                     page_image_url = upload_image_to_supabase(img_bytes, page_filename)
                     
                     first_pass = extract_products(img_base64, store_name, page_num + 1, attempt=1)
