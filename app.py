@@ -421,12 +421,18 @@ def save_catalogue(store_name, catalogue_name, valid_from, valid_until, fine_pri
 
 @app.route("/upload-tool")
 def upload_tool():
-    # Try to serve static file first, fallback to embedded HTML
+    # FORCE DELETE any existing static file on every request
     try:
-        return app.send_static_file("upload.html")
+        import os
+        static_path = os.path.join(app.static_folder, 'upload.html')
+        if os.path.exists(static_path):
+            os.remove(static_path)
+            print(f"Deleted stubborn file: {static_path}")
     except:
-        return UPLOAD_HTML
-
+        pass
+    
+    # Always return the embedded HTML
+    return UPLOAD_HTML
 # ADD THIS NEW ROUTE HERE 👇
 @app.route("/upload-tool-new")
 def upload_tool_new():
