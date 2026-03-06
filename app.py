@@ -415,12 +415,27 @@ def save_catalogue(store_name, catalogue_name, valid_from, valid_until, fine_pri
 # FLASK ROUTES
 # ===========================
 
+# ===========================
+# FLASK ROUTES
+# ===========================
+
 @app.route("/upload-tool")
 def upload_tool():
+    # Try to serve static file first, fallback to embedded HTML
+    try:
+        return app.send_static_file("upload.html")
+    except:
+        return UPLOAD_HTML
+
+# ADD THIS NEW ROUTE HERE 👇
+@app.route("/upload-tool-new")
+def upload_tool_new():
+    # Brand new route that bypasses static files completely
     return UPLOAD_HTML
 
 @app.route("/upload", methods=["POST"])
 def upload():
+    # ... rest of your code ...
     try:
         file = request.files.get("file")
         store_name = request.form.get("store")
