@@ -121,14 +121,14 @@ function go() {
   lastPage = 0;
   lastProducts = 0;
   
-  // Create FormData
+  // CREATE FormData FIRST (THIS IS THE FIX!)
   var fd = new FormData();
   fd.append("file", f);
   fd.append("store", s);
   fd.append("valid_from", vf);
   fd.append("valid_until", vu);
   
-  // Add resume job if present
+  // THEN handle resume job (fd now exists!)
   var rj = document.getElementById("rj").value.trim();
   if (rj) {
     fd.append("resume_job_id", rj);
@@ -183,7 +183,7 @@ function poll(job_id) {
       if (!response.ok) {
         throw new Error('HTTP error: ' + response.status);
       }
-      return response.text(); // Get as text first to handle empty responses
+      return response.text();
     })
     .then(function(text) {
       if (!text || text.trim() === '') {
@@ -197,7 +197,6 @@ function poll(job_id) {
         var cur = data.current_page || 0;
         var curProducts = data.total_products || 0;
 
-        // Update progress for new pages
         if (cur > lastPage) {
           for (var i = lastPage + 1; i <= cur; i++) {
             var pageProducts = 0;
@@ -214,13 +213,11 @@ function poll(job_id) {
           lastProducts = curProducts;
           log.scrollTop = log.scrollHeight;
           
-          // Update progress bar
           var pct = Math.round((cur / data.total_pages) * 100);
           document.getElementById("fill").style.width = pct + "%";
           document.getElementById("fill").textContent = pct + "%";
         }
 
-        // Handle completion
         if (data.status === "done") {
           clearInterval(pollInterval);
           log.textContent += "─────────────────────────────\\n";
