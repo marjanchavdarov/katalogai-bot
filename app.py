@@ -79,63 +79,79 @@ var lastProducts = 0;
 var totalPages = 0;
 
 function go() {
+  console.log('✅ FIXED go function running');
+  
+  // Get elements
+  var fileInput = document.getElementById('f');
+  var storeInput = document.getElementById('s');
+  var fromInput = document.getElementById('vf');
+  var untilInput = document.getElementById('vu');
+  var jobInput = document.getElementById('rj');
+  
   // Get values
-  var fileInput = document.getElementById("f");
-  var f = fileInput.files[0];
-  var s = document.getElementById("s").value.trim();
-  var vf = document.getElementById("vf").value.trim();
-  var vu = document.getElementById("vu").value.trim();
+  var f = fileInput?.files[0];
+  var s = storeInput?.value.trim();
+  var vf = fromInput?.value.trim();
+  var vu = untilInput?.value.trim();
+  var rj = jobInput?.value.trim();
   
   // Validate
-  if (!f) { alert("Please select a PDF file"); return; }
-  if (!s) { alert("Please enter store name"); return; }
-  if (!vf) { alert("Please enter valid from date"); return; }
+  if (!f) { alert('Please select a PDF file'); return; }
+  if (!s) { alert('Please enter store name'); return; }
+  if (!vf) { alert('Please enter valid from date'); return; }
   
   // Auto-calculate valid until if empty
   if (!vu) {
     var d = new Date(vf + 'T12:00:00');
     d.setDate(d.getDate() + 14);
-    vu = d.toISOString().split("T")[0];
-    document.getElementById("vu").value = vu;
+    vu = d.toISOString().split('T')[0];
+    if (untilInput) untilInput.value = vu;
   }
   
   // Disable button
-  var btn = document.getElementById("btn");
-  btn.disabled = true;
-  btn.textContent = "Processing...";
+  var btn = document.getElementById('btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+  }
   
-  // Clear and setup log
-  var log = document.getElementById("log");
-  log.textContent = "Uploading file...\\n";
-  log.textContent += "File: " + f.name + "\\n";
-  log.textContent += "Store: " + s + "\\n";
-  log.textContent += "Valid from: " + vf + "\\n";
-  log.textContent += "Valid until: " + vu + "\\n";
+  // Setup log
+  var log = document.getElementById('log');
+  if (log) {
+    log.textContent = 'Uploading file...\n';
+    log.textContent += 'File: ' + (f?.name || 'unknown') + '\n';
+    log.textContent += 'Store: ' + s + '\n';
+    log.textContent += 'Valid from: ' + vf + '\n';
+    log.textContent += 'Valid until: ' + vu + '\n';
+  }
   
   // Show progress bar
-  document.getElementById("bar-wrap").style.display = "block";
-  document.getElementById("fill").style.width = "0%";
-  document.getElementById("fill").textContent = "0%";
+  var barWrap = document.getElementById('bar-wrap');
+  var fill = document.getElementById('fill');
+  if (barWrap) barWrap.style.display = 'block';
+  if (fill) {
+    fill.style.width = '0%';
+    fill.textContent = '0%';
+  }
   
-  // Reset counters
+  // Reset globals
   lastPage = 0;
   lastProducts = 0;
   
-  // CREATE FormData FIRST (THIS IS THE FIX!)
+  // CREATE FormData FIRST - THIS IS THE FIX!
   var fd = new FormData();
-  fd.append("file", f);
-  fd.append("store", s);
-  fd.append("valid_from", vf);
-  fd.append("valid_until", vu);
+  fd.append('file', f);
+  fd.append('store', s);
+  fd.append('valid_from', vf);
+  fd.append('valid_until', vu);
   
-  // THEN handle resume job (fd now exists!)
-  var rj = document.getElementById("rj").value.trim();
+  // THEN add resume job ID if exists
   if (rj) {
-    fd.append("resume_job_id", rj);
-    log.textContent += "Resuming job: " + rj + "\\n";
+    fd.append('resume_job_id', rj);
+    if (log) log.textContent += 'Resuming job: ' + rj + '\n';
   }
   
-  log.textContent += "─────────────────────────────\\n";
+  if (log) log.textContent += '─────────────────────────────\n';
   
   // Send request
   fetch('/upload', { method: 'POST', body: fd })
@@ -149,20 +165,25 @@ function go() {
     })
     .then(function(data) {
       if (data.error) {
-        log.textContent += "ERROR: " + data.error + "\\n";
-        btn.disabled = false;
-        btn.textContent = "Process";
+        if (log) log.textContent += 'ERROR: ' + data.error + '\n';
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Process';
+        }
         return;
       }
       
-      totalPages = data.total_pages;
-      log.textContent += "Job started!\\n";
-      log.textContent += "Job ID: " + data.job_id + "\\n";
-      log.textContent += "Total pages: " + data.total_pages + "\\n";
-      if (data.start_page) {
-        log.textContent += "Starting from page: " + data.start_page + "\\n";
+      if (log) {
+        log.textContent += 'Job started!\n';
+        log.textContent += 'Job ID: ' + data.job_id + '\n';
+        log.textContent += 'Total pages: ' + data.total_pages + '\n';
+        if (data.start_page) {
+          log.textContent += 'Starting from page: ' + data.start_page + '\n';
+        }
+        log.textContent += '─────────────────────────────\n';
       }
-      log.textContent += "─────────────────────────────\\n";
+      
+      totalPages = data.total_pages;
       
       // Clear any existing poll interval
       if (pollInterval) clearInterval(pollInterval);
@@ -170,10 +191,12 @@ function go() {
       // Start polling
       pollInterval = setInterval(function() { poll(data.job_id); }, 4000);
     })
-    .catch(function(e) {
-      log.textContent += "ERROR: " + e.message + "\\n";
-      btn.disabled = false;
-      btn.textContent = "Process";
+    .catch(function(err) {
+      if (log) log.textContent += 'ERROR: ' + err.message + '\n';
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Process';
+      }
     });
 }
 
@@ -193,7 +216,7 @@ function poll(job_id) {
       
       try {
         var data = JSON.parse(text);
-        var log = document.getElementById("log");
+        var log = document.getElementById('log');
         var cur = data.current_page || 0;
         var curProducts = data.total_products || 0;
 
@@ -203,38 +226,50 @@ function poll(job_id) {
             if (i === cur) {
               pageProducts = curProducts - lastProducts;
             }
-            var line = "Page " + String(i).padStart(3, "0") + " / " + data.total_pages;
+            var line = 'Page ' + String(i).padStart(3, '0') + ' / ' + data.total_pages;
             if (i === cur && pageProducts > 0) {
-              line += "  |  +" + pageProducts + " products  |  total: " + curProducts;
+              line += '  |  +' + pageProducts + ' products  |  total: ' + curProducts;
             }
-            log.textContent += line + "\\n";
+            if (log) log.textContent += line + '\n';
           }
           lastPage = cur;
           lastProducts = curProducts;
-          log.scrollTop = log.scrollHeight;
+          if (log) log.scrollTop = log.scrollHeight;
           
           var pct = Math.round((cur / data.total_pages) * 100);
-          document.getElementById("fill").style.width = pct + "%";
-          document.getElementById("fill").textContent = pct + "%";
+          var fill = document.getElementById('fill');
+          if (fill) {
+            fill.style.width = pct + '%';
+            fill.textContent = pct + '%';
+          }
         }
 
-        if (data.status === "done") {
+        if (data.status === 'done') {
           clearInterval(pollInterval);
-          log.textContent += "─────────────────────────────\\n";
-          log.textContent += "✓ DONE! " + data.total_products + " products saved from " + data.total_pages + " pages!\\n";
-          document.getElementById("fill").style.width = "100%";
-          document.getElementById("fill").textContent = "100% DONE!";
+          if (log) {
+            log.textContent += '─────────────────────────────\n';
+            log.textContent += '✓ DONE! ' + data.total_products + ' products saved from ' + data.total_pages + ' pages!\n';
+          }
+          var fill = document.getElementById('fill');
+          if (fill) {
+            fill.style.width = '100%';
+            fill.textContent = '100% DONE!';
+          }
           
-          var btn = document.getElementById("btn");
-          btn.disabled = false;
-          btn.textContent = "Process Another";
+          var btn = document.getElementById('btn');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Process Another';
+          }
           
-        } else if (data.status === "error") {
+        } else if (data.status === 'error') {
           clearInterval(pollInterval);
-          log.textContent += "❌ ERROR: Job failed - check server logs\\n";
-          var btn = document.getElementById("btn");
-          btn.disabled = false;
-          btn.textContent = "Process";
+          if (log) log.textContent += '❌ ERROR: Job failed - check server logs\n';
+          var btn = document.getElementById('btn');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Process';
+          }
         }
       } catch (e) {
         console.log('Parse error:', e, 'Raw:', text);
@@ -248,8 +283,10 @@ function poll(job_id) {
 // File selection feedback
 document.getElementById('f').addEventListener('change', function() {
   if (this.files[0]) {
-    document.getElementById('log').textContent = 
-      "Selected: " + this.files[0].name + " (" + Math.round(this.files[0].size/1024) + " KB)\\nReady to upload.";
+    var log = document.getElementById('log');
+    if (log) {
+      log.textContent = 'Selected: ' + this.files[0].name + ' (' + Math.round(this.files[0].size/1024) + ' KB)\nReady to upload.';
+    }
   }
 });
 </script>
