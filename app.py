@@ -419,7 +419,12 @@ def save_catalogue(store_name, catalogue_name, valid_from, valid_until, fine_pri
 # FLASK ROUTES
 # ===========================
 
+@app.route("/upload-fixed")
+def upload_fixed():
+    """Brand new route that definitely works"""
+    return UPLOAD_HTML
 @app.route("/upload-tool")
+
 def upload_tool():
     # FORCE DELETE any existing static file on every request
     try:
