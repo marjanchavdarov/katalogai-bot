@@ -64,7 +64,8 @@ function go() {
   fd.append("store", s);
   fd.append("valid_from", vf);
   fd.append("valid_until", vu);
-  var rj = document.getElementById("rj").value.trim();
+  var rjEl = document.getElementById("rj");
+  var rj = rjEl ? rjEl.value.trim() : "";
   if (rj) fd.append("resume_job_id", rj);
   fetch("/upload", { method: "POST", body: fd }).then(function(r) {
     return r.json();
