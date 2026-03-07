@@ -345,6 +345,22 @@ def merge_results(first_tuple, second_tuple):
     fine_print = fine_print1 or fine_print2
     return merged, fine_print
 
+def get_page_image_url(store, catalogue_name, page_num):
+    """Generate URL for catalog page image from organized folders"""
+    bucket = "katalog-images"
+    store_clean = store.lower().replace(' ', '_')
+    
+    # Extract date from catalogue name
+    import re
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', catalogue_name)
+    if date_match:
+        date_folder = date_match.group(1)
+    else:
+        # Fallback - you might want to store date in database
+        date_folder = "2026-03-04"  # default
+    
+    return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{store_clean}/{date_folder}/page_{str(page_num).zfill(3)}.jpg"
+
 def parse_date(date_str):
     if not date_str or date_str == 'null':
         return None
@@ -355,20 +371,70 @@ def parse_date(date_str):
             continue
     return None
 
-def upload_image_to_supabase(image_bytes, filename):
+@app.route("/admin/update-image-urls")
+def update_image_urls():
+    """One-time function to update database with new folder URLs"""
+    # Get all products
+    products = supabase.table('products').select('*').execute()
+    
+    for p in products.data:
+        store = p['store']
+        catalogue = p['catalogue_name']
+        page = p['page_number']
+        
+        # Generate new URL
+        new_url = get_page_image_url(store, catalogue, page)
+        
+        # Update database
+        supabase.table('products').update({
+            'page_image_url': new_url
+        }).eq('id', p['id']).execute()
+    
+    return "✅ Database updated with folder URLs!"
+
+def upload_image_to_supabase(image_bytes, store_name, catalogue_name, page_num):
+    """Upload image to organized folders"""
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("Supabase credentials not set")
         return None
-        
+    
+    bucket_name = "katalog-images"
+    
+    # Clean store name (lowercase, no spaces)
+    store_clean = store_name.lower().replace(' ', '_')
+    
+    # Extract date from catalogue name or use current
+    # Try to find date pattern like YYYY-MM-DD in catalogue_name
+    import re
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', catalogue_name)
+    if date_match:
+        date_folder = date_match.group(1)
+    else:
+        # Fallback to today's date
+        from datetime import datetime
+        date_folder = datetime.now().strftime("%Y-%m-%d")
+    
+    # Create folder path: store/date/page_xxx.jpg
+    folder_path = f"{store_clean}/{date_folder}"
+    filename = f"page_{str(page_num).zfill(3)}.jpg"
+    full_path = f"{folder_path}/{filename}"
+    
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "image/jpeg"
     }
-    url = f"{SUPABASE_URL}/storage/v1/object/katalog-images/{filename}"
+    
+    # Upload to Supabase with folder path
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket_name}/{full_path}"
     response = requests.post(url, headers=headers, data=image_bytes)
+    
     if response.status_code in [200, 201]:
-        return f"{SUPABASE_URL}/storage/v1/object/public/katalog-images/{filename}"
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{full_path}"
+        print(f"✅ Image uploaded to folder: {full_path}")
+        return public_url
+    
+    print(f"❌ Upload failed: {response.status_code}")
     return None
 
 def save_products(products, store_name, page_num, page_image_url, catalogue_name, valid_from, valid_until):
@@ -426,6 +492,19 @@ def save_products(products, store_name, page_num, page_image_url, catalogue_name
     if response.status_code in [200, 201]:
         return len(records)
     return 0
+
+def format_product_with_link(product):
+    store = product['store']
+    catalogue = product['catalogue_name']
+    page = product['page_number']
+    
+    image_url = get_page_image_url(store, catalogue, page)
+    
+    return f"""
+• {product['product']}: {product['sale_price']}
+  📄 {store} - stranica {page}
+  🔗 {image_url}
+"""
 
 def save_catalogue(store_name, catalogue_name, valid_from, valid_until, fine_print, pages, products_count):
     if not SUPABASE_URL or not SUPABASE_KEY:
